@@ -37,12 +37,36 @@ except ImportError:
     except ImportError:
         from io import StringIO
 
-import contextlib, weakref
+import contextlib, functools, weakref
 
 import llvm
 from llvm._intrinsic_ids import *
 from llvm.deprecated import deprecated
 from llvmpy import api
+
+
+# From http://code.activestate.com/recipes/576563-cached-property/
+
+def cached_property(f):
+    """returns a cached property that is calculated by function f"""
+
+    @functools.wraps(f)
+    def get(self):
+        try:
+            return self._property_cache[f]
+        except AttributeError:
+            self._property_cache = {}
+            x = self._property_cache[f] = f(self)
+            return x
+        except KeyError:
+            x = self._property_cache[f] = f(self)
+            return x
+
+    return property(get)
+
+cached_property.slots = ('_property_cache',)
+
+
 
 #===----------------------------------------------------------------------===
 # Enumerations
@@ -1559,8 +1583,9 @@ class Argument(Value):
     def has_struct_ret(self):
         return self._ptr.hasStructRetAttr()
 
+
 class Function(GlobalValue):
-    __slots__ = ()
+    __slots__ = cached_property.slots
     _type_ = api.llvm.Function
 
     @staticmethod
@@ -1633,7 +1658,7 @@ class Function(GlobalValue):
 
     does_not_throw = property(_get_does_not_throw, _set_does_not_throw)
 
-    @property
+    @cached_property
     def args(self):
         args = self._ptr.getArgumentList()
         return list(map(_make_value, args))
